@@ -10,74 +10,80 @@ use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 #[Layout('layouts.agency')]
 class DynamicLists extends Component
 {
-    // General Properties
-    public string $newListName = '';
-    public array $itemLabel = [];
-    public array $subItemLabel = [];
-    public array $expandedLists = [];
+    // الخصائص العامة
+    public string $newListName = ''; // اسم القائمة الجديدة
+    public array $itemLabel = []; // تسميات البنود الرئيسية
+    public array $subItemLabel = []; // تسميات البنود الفرعية
+    public array $expandedLists = []; // القوائم المفتوحة/الموسعة
 
-    // Sub-item Editing Properties
-    public ?int $editingSubItemId = null;
-    public string $editingSubItemLabel = '';
+    // خصائص تعديل البنود الفرعية
+    public ?int $editingSubItemId = null; // معرف البند الفرعي قيد التعديل
+    public string $editingSubItemLabel = ''; // نص البند الفرعي قيد التعديل
 
-    // Cloning State
-    public bool $isCloning = false;
-    public array $clonedListsCache = [];
+    // حالات خاصة بالنسخ
+    public bool $isCloning = false; // حالة النسخ الحالية
+    public array $clonedListsCache = []; // تخزين مؤقت للقوائم المنسوخة
 
     /**
-     * Get lists available for the agency
+     * الحصول على القوائم المتاحة للوكالة
+     * @return Collection
      */
-    public function getListsProperty(): EloquentCollection
+    public function getListsProperty(): Collection
     {
         $user = Auth::user();
 
+        // إذا كان المستخدم مدير نظام، أحصل على القوائم النظامية فقط
         if ($user->isSuperAdmin()) {
             return DynamicList::with(['items.subItems'])
-                ->system()
-                ->orderBy('name')
+                ->where('is_system', true)
+                ->orderBy('id')
                 ->get();
         }
 
+        // القوائم الخاصة بالوكالة
         $agencyLists = DynamicList::with(['items.subItems'])
-            ->agency($user->agency_id)
+            ->where('agency_id', $user->agency_id)
             ->get();
 
+        // القوائم النظامية التي لم يتم نسخها بعد
         $copiedOriginalIds = $agencyLists->whereNotNull('original_id')
             ->pluck('original_id')
             ->toArray();
 
         $systemLists = DynamicList::with(['items.subItems'])
-            ->system()
+            ->where('is_system', true)
             ->whereNotIn('id', $copiedOriginalIds)
             ->get();
 
-        return $agencyLists->merge($systemLists)
-            ->sortBy('name')
-            ->values();
+        // دمج القوائم وترتيبها حسب المعرف
+        return $agencyLists->merge($systemLists)->sortBy('id');
     }
 
     /**
-     * Toggle list expansion state
+     * تبديل حالة توسيع/طي القائمة
+     * @param int $listId
      */
-    public function toggleExpand(int $listId): void
+    public function toggleExpand($listId)
     {
         if (in_array($listId, $this->expandedLists)) {
             $this->expandedLists = array_diff($this->expandedLists, [$listId]);
-            return;
+        } else {
+            $this->expandedLists[] = $listId;
         }
-
-        $this->expandedLists[] = $listId;
     }
 
+    // ============ إدارة البنود الفرعية ============
+
     /**
-     * Add new sub-item
+     * إضافة بند فرعي جديد
+     * @param int $itemId
+     * @throws AuthorizationException
      */
-    public function addSubItem(int $itemId): void
+    public function addSubItem($itemId)
     {
         $this->validate([
             "subItemLabel.$itemId" => 'required|string|max:255',
@@ -86,21 +92,24 @@ class DynamicLists extends Component
         $item = DynamicListItem::with(['list', 'subItems'])->findOrFail($itemId);
         $user = Auth::user();
 
+        // التحقق من الصلاحيات وحالة القائمة النظامية
         if (!$item->list->isEditableBy($user)) {
             if ($item->list->is_system) {
                 $this->handleSystemListSubItem($item);
                 return;
             }
-            throw new AuthorizationException(__('You are not authorized to perform this action.'));
+            throw new AuthorizationException("لا تملك صلاحية التعديل.");
         }
 
+        // إضافة البند الفرعي
         $this->createSubItem($item);
     }
 
     /**
-     * Handle sub-item creation for system lists
+     * معالجة إضافة بند فرعي للقوائم النظامية
+     * @param DynamicListItem $item
      */
-    protected function handleSystemListSubItem(DynamicListItem $item): void
+    protected function handleSystemListSubItem(DynamicListItem $item)
     {
         $user = Auth::user();
         $clonedList = $this->getOrCreateClonedList($item->list, $user->agency_id);
@@ -112,40 +121,37 @@ class DynamicLists extends Component
         if ($newItem) {
             $this->createSubItem($newItem);
             $this->expandedLists = array_unique([...$this->expandedLists, $clonedList->id]);
-            $this->dispatch('subitem-added',
-                listId: $clonedList->id,
-                itemId: $newItem->id
-            );
+            $this->dispatch('subitem-added', listId: $clonedList->id, itemId: $newItem->id);
         }
     }
 
     /**
-     * Create new sub-item
+     * إنشاء بند فرعي جديد
+     * @param DynamicListItem $item
      */
-    protected function createSubItem(DynamicListItem $item): void
+    protected function createSubItem(DynamicListItem $item)
     {
         $newSubItem = $item->subItems()->create([
             'label' => $this->subItemLabel[$item->id],
-            'order' => $item->subItems()->count() + 1,
+            'dynamic_list_item_id' => $item->id
         ]);
 
         if (!$item->relationLoaded('subItems')) {
             $item->setRelation('subItems', collect());
         }
-
         $item->subItems->push($newSubItem);
-        $this->subItemLabel[$item->id] = '';
 
-        $this->dispatch('subitem-added',
-            listId: $item->list->id,
-            itemId: $item->id
-        );
+        $this->subItemLabel[$item->id] = '';
+        $this->dispatch('subitem-added', listId: $item->list->id, itemId: $item->id);
     }
 
     /**
-     * Get or create cloned list
+     * الحصول على القائمة المنسوخة أو إنشائها إذا لم تكن موجودة
+     * @param DynamicList $systemList
+     * @param int $agencyId
+     * @return DynamicList
      */
-    protected function getOrCreateClonedList(DynamicList $systemList, int $agencyId): DynamicList
+    protected function getOrCreateClonedList(DynamicList $systemList, $agencyId): DynamicList
     {
         return $this->clonedListsCache[$systemList->id] ??= DynamicList::with(['items.subItems'])
             ->where('original_id', $systemList->id)
@@ -157,14 +163,16 @@ class DynamicLists extends Component
     }
 
     /**
-     * Start editing sub-item
+     * بدء تعديل البند الفرعي
+     * @param int $subItemId
+     * @throws AuthorizationException
      */
-    public function startEditSubItem(int $subItemId): void
+    public function startEditSubItem($subItemId)
     {
-        $subItem = DynamicListItemSub::with('item.list')->findOrFail($subItemId);
+        $subItem = DynamicListItemSub::findOrFail($subItemId);
 
         if (!Auth::user()->canEditList($subItem->item->list)) {
-            throw new AuthorizationException(__('You are not authorized to edit this item.'));
+            throw new AuthorizationException("لا تملك صلاحية التعديل.");
         }
 
         $this->editingSubItemId = $subItem->id;
@@ -172,34 +180,38 @@ class DynamicLists extends Component
     }
 
     /**
-     * Update sub-item
+     * تحديث البند الفرعي
+     * @throws AuthorizationException
      */
-    public function updateSubItem(): void
+    public function updateSubItem()
     {
         $this->validate([
             'editingSubItemLabel' => 'required|string|max:255',
         ]);
 
-        $subItem = DynamicListItemSub::with('item.list')->findOrFail($this->editingSubItemId);
+        $subItem = DynamicListItemSub::findOrFail($this->editingSubItemId);
 
         if (!Auth::user()->canEditList($subItem->item->list)) {
-            throw new AuthorizationException(__('You are not authorized to update this item.'));
+            throw new AuthorizationException("لا تملك صلاحية التعديل.");
         }
 
         $subItem->update(['label' => $this->editingSubItemLabel]);
+
         $this->cancelEditSubItem();
         $this->dispatch('subitem-updated');
     }
 
     /**
-     * Delete sub-item
+     * حذف البند الفرعي
+     * @param int $subItemId
+     * @throws AuthorizationException
      */
-    public function deleteSubItem(int $subItemId): void
+    public function deleteSubItem($subItemId)
     {
         $subItem = DynamicListItemSub::with('item.list')->findOrFail($subItemId);
 
         if (!Auth::user()->canEditList($subItem->item->list)) {
-            throw new AuthorizationException(__('You are not authorized to delete this item.'));
+            throw new AuthorizationException("لا تملك صلاحية الحذف.");
         }
 
         $subItem->delete();
@@ -207,22 +219,22 @@ class DynamicLists extends Component
     }
 
     /**
-     * Cancel sub-item editing
+     * إلغاء تعديل البند الفرعي
      */
-    public function cancelEditSubItem(): void
+    public function cancelEditSubItem()
     {
         $this->editingSubItemId = null;
         $this->editingSubItemLabel = '';
     }
 
     /**
-     * Render component
+     * عرض المكون
+     * @return \Illuminate\Contracts\View\View
      */
     public function render()
     {
-        return view('livewire.agency.dynamic-lists')
-            ->with([
-                'lists' => $this->lists,
-            ]);
+        return view('livewire.agency.dynamic-lists', [
+            'lists' => $this->lists,
+        ]);
     }
 }

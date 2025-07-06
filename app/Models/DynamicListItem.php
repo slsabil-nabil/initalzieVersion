@@ -12,103 +12,59 @@ class DynamicListItem extends Model
     use HasFactory;
 
     /**
-     * The attributes that are mass assignable.
+     * الحقول القابلة للتعبئة الجماعية
      *
      * @var array<string>
      */
     protected $fillable = [
-        'dynamic_list_id',
-        'label',
-        'order',
-        'is_active', // Added for enable/disable functionality
+        'dynamic_list_id', // معرف القائمة الرئيسية
+        'label',           // نص البند
     ];
 
     /**
-     * The relationships that should always be loaded.
+     * العلاقات التي يجب تحميلها تلقائياً
      *
      * @var array<string>
      */
     protected $with = ['subItems'];
 
     /**
-     * The parent models that should be touched on save.
+     * النماذج الرئيسية التي يجب تحديثها عند الحفظ
      *
      * @var array<string>
      */
     protected $touches = ['list'];
 
     /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
-    protected $casts = [
-        'is_active' => 'boolean',
-        'order' => 'integer',
-    ];
-
-    /**
-     * Default values for attributes.
-     *
-     * @var array<string, mixed>
-     */
-    protected $attributes = [
-        'is_active' => true,
-        'order' => 0,
-    ];
-
-    /**
-     * Relationship to the parent list.
+     * العلاقة مع القائمة الرئيسية
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
     public function list(): BelongsTo
     {
         return $this->belongsTo(DynamicList::class, 'dynamic_list_id')
-            ->withDefault(); // Prevents null reference errors
+            ->withDefault(); // تجنب الأخطاء عند عدم وجود قائمة رئيسية
     }
 
     /**
-     * Relationship to the sub-items.
+     * العلاقة مع البنود الفرعية
      *
      * @return \Illuminate\Database\Eloquent\Relations\HasMany
      */
     public function subItems(): HasMany
     {
         return $this->hasMany(DynamicListItemSub::class)
-            ->orderBy('order') // Order by explicit order field
-            ->orderBy('created_at'); // Fallback ordering
+            ->orderBy('created_at'); // الترتيب حسب وقت الإنشاء
     }
 
     /**
-     * Scope to only include active items.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    /**
-     * Scope to order items by their order field.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('order');
-    }
-
-    /**
-     * Get the count of active sub-items.
+     * الحصول على عدد البنود الفرعية النشطة
+     * (يتم حسابها بدون استخدام حقل is_active)
      *
      * @return int
      */
     public function getActiveSubItemsCountAttribute(): int
     {
-        return $this->subItems()->active()->count();
+        return $this->subItems()->count(); // جميع البنود تعتبر نشطة
     }
 }

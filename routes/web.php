@@ -2,163 +2,87 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
-use App\Livewire\{
-    Login,
-    ForgotPassword,
-    ResetPassword
-};
-use App\Livewire\Admin\{
-    Dashboard as AdminDashboard,
-    Agencies as AdminAgencies,
-    AddAgency as AdminAddAgency,
-    EditAgency as AdminEditAgency,
-    DeleteAgency as AdminDeleteAgency,
-    DynamicLists as AdminDynamicLists
-};
-use App\Livewire\Agency\{
-    Dashboard as AgencyDashboard,
-    Users as AgencyUsers,
-    Roles as AgencyRoles,
-    Permissions as AgencyPermissions,
-    Profile as AgencyProfile,
-    Services as AgencyServices,
-    DynamicLists as AgencyDynamicLists,
-    AgencySetup,
-    AgencyShow
-};
-use App\Livewire\Sales\{
-    Index as SalesIndex,
-    Create as SalesCreate
-};
-use App\Livewire\HR\{
-    EmployeeIndex,
-    EmployeeCreate,
-    EmployeeEdit
-};
+use App\Livewire\Login;
 
-/*
-|--------------------------------------------------------------------------
-| Public Routes
-|--------------------------------------------------------------------------
-*/
-
+// Authentication Routes
 Route::get('/', function () {
     return view('welcome');
-})->name('home');
+});
 
-Route::get('/login', Login::class)
-    ->middleware('guest')
-    ->name('login');
+Route::get('/login', Login::class)->name('login');
+Route::post('/logout', function () {
+    Auth::logout();
+    return redirect('/');
+})->name('logout');
 
-Route::get('/forgot-password', ForgotPassword::class)
-    ->middleware('guest')
-    ->name('password.request');
+// Password Reset Routes
+Route::get('/forgot-password', \App\Livewire\ForgotPassword::class)->name('password.request');
+Route::get('/reset-password/{token}', \App\Livewire\ResetPassword::class)->name('password.reset');
 
-Route::get('/reset-password/{token}', ResetPassword::class)
-    ->middleware('guest')
-    ->name('password.reset');
+// Main Dashboard Redirect (Based on User Role)
+Route::get('/dashboard', function () {
+    $user = Auth::user();
 
-/*
-|--------------------------------------------------------------------------
-| Authenticated Routes
-|--------------------------------------------------------------------------
-*/
+    if ($user->isSuperAdmin()) {
+        return redirect('/admin/dashboard');
+    }
 
-Route::middleware(['auth'])->group(function () {
-    // Dashboard Redirect
-    Route::get('/dashboard', function () {
-        $user = Auth::user();
+    if ($user->isAgencyAdmin()) {
+        if (!$user->agency || !$user->agency->setting) {
+            return redirect()->route('agency.setup');
+        }
+        return redirect('/agency/dashboard');
+    }
 
-        return match (true) {
-            $user->isSuperAdmin() => redirect()->route('admin.dashboard'),
-            $user->isAgencyAdmin() && (!$user->agency || !$user->agency->setting)
-                => redirect()->route('agency.setup'),
-            default => redirect()->route('agency.dashboard')
-        };
-    })->name('dashboard');
+    if ($user->isAgencyUser()) {
+        return redirect('/agency/dashboard');
+    }
 
-    // Logout
-    Route::post('/logout', function () {
-        Auth::logout();
-        return redirect()->route('home');
-    })->name('logout');
+    return redirect('/');
+})->middleware('auth')->name('dashboard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Admin Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['admin'])->prefix('admin')->name('admin.')->group(function () {
-        Route::get('/dashboard', AdminDashboard::class)->name('dashboard');
+// Admin Routes (Highest Privilege)
+Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
+    // Dashboard
+    Route::get('/dashboard', \App\Livewire\Admin\Dashboard::class)->name('admin.dashboard');
 
-        // Agency Management
-        Route::prefix('agencies')->name('agencies.')->group(function () {
-            Route::get('/', AdminAgencies::class)->name('index');
-            Route::get('/add', AdminAddAgency::class)->name('create');
-            Route::get('/edit/{id}', AdminEditAgency::class)->name('edit');
-            Route::get('/delete/{id}', AdminDeleteAgency::class)->name('delete');
-        });
+    // Agencies Management
+    Route::get('/agencies', \App\Livewire\Admin\Agencies::class)->name('admin.agencies');
+    Route::get('/agencies/add', \App\Livewire\Admin\AddAgency::class)->name('admin.add-agency');
+    Route::get('/agencies/edit/{id}', \App\Livewire\Admin\EditAgency::class)->name('admin.edit-agency');
+    Route::get('/agencies/delete/{id}', \App\Livewire\Admin\DeleteAgency::class)->name('admin.delete-agency');
 
-        // Dynamic Lists
-        Route::get('/dynamic-lists', AdminDynamicLists::class)->name('dynamic-lists');
-    });
+    // System Configuration
+    Route::get('/dynamic-lists', \App\Livewire\Admin\DynamicLists::class)->name('admin.dynamic-lists');
+});
 
-    /*
-    |--------------------------------------------------------------------------
-    | Agency Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['agency'])->prefix('agency')->name('agency.')->group(function () {
-        // Dashboard
-        Route::get('/dashboard', AgencyDashboard::class)->name('dashboard');
+// Agency Setup (Must complete before accessing other agency routes)
+Route::get('/agency/setup', \App\Livewire\Agency\AgencySetup::class)
+    ->middleware(['auth', 'agency'])
+    ->name('agency.setup');
 
-        // Setup (for new agencies)
-        Route::get('/setup', AgencySetup::class)
-            ->middleware('can:setup,App\Models\User')
-            ->name('setup');
+// Agency Routes
+Route::middleware(['auth', 'agency'])->prefix('agency')->group(function () {
+    // Core Functionality
+    Route::get('/dashboard', \App\Livewire\Agency\Dashboard::class)->name('agency.dashboard');
+    Route::get('/profile', \App\Livewire\Agency\Profile::class)->name('agency.profile');
+    Route::get('/show', \App\Livewire\Agency\AgencyShow::class)->name('agency.show');
 
-        // Agency Profile
-        Route::get('/show', AgencyShow::class)->name('show');
-        Route::get('/profile', AgencyProfile::class)->name('profile');
+    // User Management
+    Route::get('/users', \App\Livewire\Agency\Users::class)->name('agency.users');
+    Route::get('/roles', \App\Livewire\Agency\Roles::class)->name('agency.roles');
+    Route::get('/permissions', \App\Livewire\Agency\Permissions::class)->name('agency.permissions');
 
-        // User Management
-        Route::prefix('users')->name('users.')->group(function () {
-            Route::get('/', AgencyUsers::class)->name('index');
-        });
+    // Business Operations
+    Route::get('/services', \App\Livewire\Agency\Services::class)->name('agency.services');
+    Route::get('/sales', \App\Livewire\Sales\Index::class)->name('agency.sales.index');
+    Route::get('/sales/create', \App\Livewire\Sales\Create::class)->name('agency.sales.create');
+    Route::get('/dynamic-lists', \App\Livewire\Agency\DynamicLists::class)->name('agency.dynamic-lists');
+});
 
-        // Role Management
-        Route::prefix('roles')->name('roles.')->group(function () {
-            Route::get('/', AgencyRoles::class)->name('index');
-        });
-
-        // Permission Management
-        Route::prefix('permissions')->name('permissions.')->group(function () {
-            Route::get('/', AgencyPermissions::class)->name('index');
-        });
-
-        // Services
-        Route::get('/services', AgencyServices::class)->name('services');
-
-        // Dynamic Lists
-        Route::get('/dynamic-lists', AgencyDynamicLists::class)->name('dynamic-lists');
-
-        // Sales
-        Route::prefix('sales')->name('sales.')->group(function () {
-            Route::get('/', SalesIndex::class)->name('index');
-            Route::get('/create', SalesCreate::class)->name('create');
-        });
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | HR Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::prefix('hr')->name('hr.')->group(function () {
-        Route::prefix('employees')->name('employees.')->group(function () {
-            Route::get('/', EmployeeIndex::class)->name('index');
-            Route::get('/create', EmployeeCreate::class)->name('create');
-            Route::get('/{id}/edit', EmployeeEdit::class)->name('edit');
-        });
-    });
+// HR Routes (Shared between admin and agency)
+Route::middleware(['auth'])->prefix('hr')->group(function () {
+    Route::get('/employees', \App\Livewire\HR\EmployeeIndex::class)->name('hr.employees.index');
+    Route::get('/employees/create', \App\Livewire\HR\EmployeeCreate::class)->name('hr.employees.create');
+    Route::get('/employees/{id}/edit', \App\Livewire\HR\EmployeeEdit::class)->name('hr.employees.edit');
 });
