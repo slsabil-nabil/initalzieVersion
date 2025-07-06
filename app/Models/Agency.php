@@ -52,4 +52,14 @@ class Agency extends Model
     {
         return $this->hasMany(Service::class);
     }
+
+    public function setting()
+    {
+        return $this->hasOne(AgencySetting::class);
+    }
+
+    public function branches()
+    {
+        return $this->hasMany(\App\Models\Branch::class);
+    }
 }

@@ -5,9 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class DynamicListItem extends Model
+class DynamicListItemSub extends Model
 {
     use HasFactory;
 
@@ -17,25 +16,11 @@ class DynamicListItem extends Model
      * @var array<string>
      */
     protected $fillable = [
-        'dynamic_list_id',
+        'dynamic_list_item_id',
         'label',
-        'order',
-        'is_active', // Added for enable/disable functionality
+        'order', // Added for sorting capability
+        'is_active', // Added for soft enable/disable
     ];
-
-    /**
-     * The relationships that should always be loaded.
-     *
-     * @var array<string>
-     */
-    protected $with = ['subItems'];
-
-    /**
-     * The parent models that should be touched on save.
-     *
-     * @var array<string>
-     */
-    protected $touches = ['list'];
 
     /**
      * The attributes that should be cast.
@@ -58,30 +43,18 @@ class DynamicListItem extends Model
     ];
 
     /**
-     * Relationship to the parent list.
+     * Relationship to the parent list item.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function list(): BelongsTo
+    public function item(): BelongsTo
     {
-        return $this->belongsTo(DynamicList::class, 'dynamic_list_id')
+        return $this->belongsTo(DynamicListItem::class, 'dynamic_list_item_id')
             ->withDefault(); // Prevents null reference errors
     }
 
     /**
-     * Relationship to the sub-items.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function subItems(): HasMany
-    {
-        return $this->hasMany(DynamicListItemSub::class)
-            ->orderBy('order') // Order by explicit order field
-            ->orderBy('created_at'); // Fallback ordering
-    }
-
-    /**
-     * Scope to only include active items.
+     * Scope to only include active sub-items.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @return \Illuminate\Database\Eloquent\Builder
@@ -92,7 +65,7 @@ class DynamicListItem extends Model
     }
 
     /**
-     * Scope to order items by their order field.
+     * Scope to order sub-items by their order field.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @return \Illuminate\Database\Eloquent\Builder
@@ -103,12 +76,12 @@ class DynamicListItem extends Model
     }
 
     /**
-     * Get the count of active sub-items.
+     * Get the full path of the sub-item (parent item + sub-item label).
      *
-     * @return int
+     * @return string
      */
-    public function getActiveSubItemsCountAttribute(): int
+    public function getFullPathAttribute(): string
     {
-        return $this->subItems()->active()->count();
+        return $this->item->label . ' > ' . $this->label;
     }
 }

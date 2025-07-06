@@ -1,104 +1,164 @@
-<div class="space-y-6">
-
-    <!-- نموذج إضافة قائمة -->
-    <div class="bg-white p-6 rounded shadow">
-        <h2 class="text-lg font-semibold text-gray-700 mb-4">إضافة قائمة جديدة</h2>
-        <form wire:submit.prevent="saveList" class="flex gap-4 items-end">
-            <div class="flex-1">
-                <label class="block text-sm text-gray-600 mb-1">اسم القائمة</label>
-                <input type="text" wire:model.defer="listName"
-                    class="w-full rounded-md border border-gray-300 focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50 px-4 py-2 text-sm shadow-sm">
-                @error('listName')
-                    <span class="text-red-500 text-sm">{{ $message }}</span>
-                @enderror
-            </div>
-            <button type="submit"
-                class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded text-sm">حفظ</button>
-        </form>
-    </div>
-
-    <!-- عرض القوائم -->
+<div class="space-y-6" wire:key="lists-container-{{ $lists->count() }}">
+    <!-- عرض جميع القوائم -->
     @foreach ($lists as $list)
-        <div class="bg-white rounded shadow p-4">
-            <div class="flex justify-between items-center">
-                <h3 class="text-md font-bold text-gray-800">
-                    📦 {{ $list->name }}
-                </h3>
+        <div class="bg-white rounded-xl shadow p-4 mb-6">
+            <!-- رأس القائمة مع خيارات التحكم -->
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-lg font-bold text-gray-800">{{ $list->name }}</h3>
+
+                <!-- زر توسيع/طي القائمة -->
                 <div class="flex items-center gap-2">
-                    <button wire:click="deleteList({{ $list->id }})"
-                        onclick="return confirm('هل تريد حذف هذه القائمة؟')"
-                        class="transition px-4 py-1 rounded-lg font-medium text-red-600 hover:text-white hover:bg-red-500 border border-red-100 hover:border-red-500">
-                        حذف
-                    </button>
-
                     <button wire:click="toggleExpand({{ $list->id }})"
-                        class="text-emerald-600 hover:text-emerald-700 transition duration-200">
-                        @if (in_array($list->id, $expandedLists))
-                            <!-- سهم لأعلى -->
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none"
-                                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
-                            </svg>
-                        @else
-                            <!-- سهم لأسفل -->
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline" fill="none"
-                                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        @endif
+                            class="text-gray-500 hover:text-emerald-600 transition"
+                            aria-label="{{ in_array($list->id, $expandedLists) ? 'طي القائمة' : 'توسيع القائمة' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 transform transition-transform duration-200"
+                             :class="{ 'rotate-180': @js(in_array($list->id, $expandedLists)) }"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
                     </button>
-
                 </div>
             </div>
 
+            <!-- محتوى القائمة (يظهر عند التوسيع) -->
             @if (in_array($list->id, $expandedLists))
-                <div class="mt-4 space-y-2">
-
-                    <!-- العناصر -->
-                    @foreach ($list->items as $item)
-                        <div class="flex justify-between items-center bg-gray-50 p-2 rounded border">
-                            <span class="text-sm text-gray-700">{{ $item->label }}</span>
-                            <div class="flex items-center gap-2">
-                                <button wire:click="editItem({{ $list->id }}, {{ $item->id }})"
-                                    class="transition px-4 py-1 rounded-lg font-medium text-emerald-600 hover:text-white hover:bg-emerald-500 border border-emerald-100 hover:border-emerald-500">
-                                    تعديل
-                                </button>
-
-                                <button wire:click="deleteItem({{ $list->id }}, {{ $item->id }})"
-                                    onclick="return confirm('هل تريد حذف هذا البند؟')"
-                                    class="transition px-4 py-1 rounded-lg font-medium text-red-600 hover:text-white hover:bg-red-500 border border-red-100 hover:border-red-500">
-                                    حذف
-                                </button>
-                            </div>
+                <!-- عرض البنود الرئيسية -->
+                @foreach ($list->items as $item)
+                    <div class="bg-gray-50 border rounded p-3 mb-4 ml-4 space-y-2">
+                        <!-- عنوان البند الرئيسي -->
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-800 font-medium">{{ $item->label }}</span>
                         </div>
-                    @endforeach
 
-                    <!-- نموذج إضافة أو تعديل بند -->
-                    <div class="flex items-end gap-3 mt-2">
-                        <input type="text" wire:model.defer="itemLabel.{{ $list->id }}" placeholder="اسم البند"
-                            class="w-full rounded-md border border-gray-300 focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50 px-4 py-2 text-sm shadow-sm">
+                        <!-- قائمة البنود الفرعية -->
+                        <ul class="space-y-2">
+                            @foreach ($item->subItems as $sub)
+                                <li class="flex justify-between items-center pl-4">
+                                    @if ($editingSubItemId === $sub->id)
+                                        <!-- وضع التعديل للبند الفرعي -->
+                                        <form wire:submit.prevent="updateSubItem" class="flex items-center gap-2 w-full">
+                                            <input type="text" wire:model.defer="editingSubItemLabel"
+                                                   class="flex-1 rounded border px-3 py-1 text-sm focus:ring-emerald-500"
+                                                   aria-label="تعديل نص البند الفرعي">
+                                            <button type="submit"
+                                                    class="bg-green-500 text-white px-3 py-1 rounded-md text-xs font-medium hover:bg-green-600 transition">
+                                                حفظ
+                                            </button>
+                                            <button type="button" wire:click="$set('editingSubItemId', null)"
+                                                    class="border border-gray-400 hover:bg-gray-100 px-3 py-1 rounded-md text-xs font-medium text-gray-600 transition">
+                                                إلغاء
+                                            </button>
+                                        </form>
+                                    @else
+                                        <!-- وضع العرض العادي للبند الفرعي -->
+                                        <span class="text-sm text-gray-600">{{ $sub->label }}</span>
+                                        <div class="flex items-center gap-2">
+                                            <!-- زر التعديل -->
+                                            <button wire:click="startEditSubItem({{ $sub->id }})"
+                                                    class="text-emerald-700 border border-emerald-600 hover:bg-emerald-50 px-3 py-1 rounded-md text-xs font-medium transition">
+                                                تعديل
+                                            </button>
 
-                        @if (isset($editingItems[$list->id]))
-                            <button wire:click="updateItem({{ $list->id }})"
-                                class="transition px-4 py-1 rounded-lg font-medium text-blue-600 hover:text-white hover:bg-blue-500 border border-blue-100 hover:border-blue-500">
-                                تحديث
+                                            <!-- زر الحذف (غير متاح للقوائم النظامية) -->
+                                            @if (!$list->is_system)
+                                                <button onclick="confirmDeleteSubItem({{ $sub->id }})"
+                                                        class="text-red-600 border border-red-500 hover:bg-red-50 px-3 py-1 rounded-md text-xs font-medium transition">
+                                                    حذف
+                                                </button>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+
+                        <!-- نموذج إضافة بند فرعي جديد -->
+                        <div class="flex items-center gap-2 mt-2">
+                            <input type="text" wire:model.defer="subItemLabel.{{ $item->id }}"
+                                   placeholder="اسم البند الفرعي"
+                                   class="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-sm"
+                                   aria-label="إدخال اسم البند الفرعي الجديد">
+                            <button wire:click="addSubItem({{ $item->id }})"
+                                    wire:loading.attr="disabled"
+                                    class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-md text-xs font-medium border border-emerald-600 whitespace-nowrap transition flex items-center gap-1">
+                                <span wire:loading.remove wire:target="addSubItem({{ $item->id }})">+ إضافة</span>
+                                <span wire:loading wire:target="addSubItem({{ $item->id }})">
+                                    <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg"
+                                         fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                                                stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor"
+                                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                        </path>
+                                    </svg>
+                                </span>
                             </button>
-                        @else
-                            <button wire:click="addItem({{ $list->id }})"
-                                class="flex items-center gap-1 text-sm text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 rounded shadow whitespace-nowrap">
-                                <span class="text-base font-bold">+</span>
-                                <span class="text-sm">إضافة بند</span>
-                            </button>
-                        @endif
+                        </div>
+
+                        <!-- رسائل الخطأ -->
+                        @error("subItemLabel.$item->id")
+                            <span class="text-red-500 text-xs">{{ $message }}</span>
+                        @enderror
                     </div>
-
-                    @error('itemLabel.' . $list->id)
-                        <span class="text-red-500 text-sm">{{ $message }}</span>
-                    @enderror
-
-                </div>
+                @endforeach
             @endif
         </div>
     @endforeach
-
 </div>
+
+@script
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    document.addEventListener('livewire:initialized', () => {
+        /**
+         * تأكيد حذف البند الفرعي
+         * @param {number} subItemId - معرّف البند الفرعي المراد حذفه
+         */
+        window.confirmDeleteSubItem = function(subItemId) {
+            Swal.fire({
+                title: 'هل أنت متأكد؟',
+                text: "لن تتمكن من التراجع عن هذا الإجراء!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'نعم، احذفه!',
+                cancelButtonText: 'إلغاء',
+                reverseButtons: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    @this.call('deleteSubItem', subItemId)
+                        .then(() => {
+                            // عرض رسالة نجاح باستخدام Toastify
+                            Toastify({
+                                text: "تم الحذف بنجاح",
+                                duration: 3000,
+                                backgroundColor: "#10B981",
+                                className: "toastify-success",
+                            }).showToast();
+                        })
+                        .catch(error => {
+                            // عرض رسالة خطأ باستخدام Toastify
+                            Toastify({
+                                text: "حدث خطأ أثناء الحذف: " + error.message,
+                                duration: 5000,
+                                backgroundColor: "#EF4444",
+                                className: "toastify-error",
+                            }).showToast();
+                        });
+                }
+            });
+        };
+
+        // مستمع لحدث نجاح التحديث
+        Livewire.on('subitem-updated', () => {
+            Toastify({
+                text: "تم تحديث البند الفرعي بنجاح",
+                duration: 3000,
+                backgroundColor: "#10B981",
+                className: "toastify-success",
+            }).showToast();
+        });
+    });
+</script>
+@endscript

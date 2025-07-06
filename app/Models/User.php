@@ -2,15 +2,23 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Traits\UserPermissions;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, UserPermissions;
+
+    /**
+     * User type constants
+     */
+    public const USER_TYPES = [
+        'super_admin' => 'super_admin',
+        'agency_admin' => 'agency_admin',
+        'agency_user' => 'agency_user'
+    ];
 
     /**
      * The attributes that are mass assignable.
@@ -52,37 +60,44 @@ class User extends Authenticatable
         'is_active' => 'boolean',
     ];
 
-    public const USER_TYPES = [
-        'super_admin' => 'super_admin',
-        'agency_admin' => 'agency_admin',
-        'agency_user' => 'agency_user'
-    ];
-
+    /**
+     * Relationship: User belongs to an Agency
+     */
     public function agency()
     {
         return $this->belongsTo(Agency::class);
     }
 
+    /**
+     * Relationship: User belongs to a Role
+     */
     public function role()
     {
         return $this->belongsTo(Role::class);
     }
 
-    public function isSuperAdmin(): bool
+    /**
+     * Relationship: User belongs to a Position
+     */
+    public function position()
     {
-        return $this->user_type === self::USER_TYPES['super_admin'];
+        return $this->belongsTo(Position::class);
     }
 
-    public function isAgencyAdmin(): bool
+    /**
+     * Relationship: User belongs to a Department
+     */
+    public function department()
     {
-        return $this->user_type === self::USER_TYPES['agency_admin'];
+        return $this->belongsTo(Department::class);
     }
 
-    public function isAgencyUser(): bool
-    {
-        return $this->user_type === self::USER_TYPES['agency_user'];
-    }
-
+    /**
+     * Check if user has any of the given permissions
+     *
+     * @param array|string $permissions Single permission or array of permissions
+     * @return bool
+     */
     public function hasAnyPermission($permissions)
     {
         if ($this->isSuperAdmin()) {
@@ -92,6 +107,27 @@ class User extends Authenticatable
         return $this->role && $this->role->hasAnyPermission($permissions);
     }
 
+    /**
+     * Check if user has a specific permission
+     *
+     * @param string $permission
+     * @return bool
+     */
+    public function hasPermission($permission)
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        return $this->role && $this->role->hasPermission($permission);
+    }
+
+    /**
+     * Check if user can manage an agency
+     *
+     * @param int|null $agencyId Specific agency ID to check (optional)
+     * @return bool
+     */
     public function canManageAgency($agencyId = null)
     {
         if ($this->isSuperAdmin()) {
@@ -105,23 +141,24 @@ class User extends Authenticatable
         return false;
     }
 
-    public function position()
+    /**
+     * Scope: Only active users
+     */
+    public function scopeActive($query)
     {
-        return $this->belongsTo(Position::class);
+        return $query->where('is_active', true);
     }
 
-    public function department()
+    /**
+     * Get the user's full type name
+     */
+    public function getTypeNameAttribute(): string
     {
-        return $this->belongsTo(Department::class);
+        return match($this->user_type) {
+            self::USER_TYPES['super_admin'] => 'Super Administrator',
+            self::USER_TYPES['agency_admin'] => 'Agency Administrator',
+            self::USER_TYPES['agency_user'] => 'Agency User',
+            default => 'Unknown'
+        };
     }
-
-    public function hasPermission($permission)
-{
-    if ($this->isSuperAdmin()) {
-        return true;
-    }
-
-    return $this->role && $this->role->hasPermission($permission);
-}
-
 }
